@@ -9,14 +9,15 @@ FROM agent0ai/agent-zero:v0.9.8.2
 
 USER root
 
-# ─── Layer 1: System dependencies ─────────────────────────────────────────────
+# ─── Layer 1: System dependencies + nginx cleanup ────────────────────────────
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         nginx \
         curl && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     mkdir -p /a0 && \
-    rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+    rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true && \
+    sed -i "/^daemon/d" /etc/nginx/nginx.conf 2>/dev/null || true
 
 # ─── Layer 2: nginx WebSocket proxy config ────────────────────────────────────
 COPY scripts/nginx-ws-proxy.conf /etc/nginx/sites-available/agent-zero

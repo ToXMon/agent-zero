@@ -3,9 +3,6 @@
 . "/ins/setup_venv.sh" "$@"
 . "/ins/copy_A0.sh" "$@"
 
-# Apply Akash reliability patches
-echo "Applying Akash reliability patches..."
-bash /akash-patches/apply_patches.sh /a0
 
 python /a0/prepare.py --dockerized=true
 
