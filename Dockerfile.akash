@@ -46,10 +46,6 @@ COPY scripts/run_A0_akash.sh /exe/run_A0.sh
 COPY scripts/healthcheck.sh /exe/healthcheck.sh
 RUN chmod +x /exe/run_A0.sh /exe/healthcheck.sh
 
-# ─── Layer 4: Patch scripts (rebuild only when patches change) ────────────────
-COPY scripts/apply_patches.sh /akash-patches/apply_patches.sh
-COPY patches/ /akash-patches/patches/
-RUN chmod +x /akash-patches/apply_patches.sh && \
     # Apply patches to the A0 source tree
     bash /akash-patches/apply_patches.sh /a0 && \
     # Verify critical patches applied
