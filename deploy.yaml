@@ -19,7 +19,7 @@ version: "2.0"
 
 services:
   agent-zero:
-    image: ghcr.io/toxmon/agent-zero-akash:latest  # ← CHANGE THIS (always pin a version tag)
+    image: ghcr.io/toxmon/agent-zero-akash:latest  # Auto-built from GitHub Actions on push to main
     env:
       # ── Required ──────────────────────────────────────
       - "WEB_UI_HOST=0.0.0.0"
