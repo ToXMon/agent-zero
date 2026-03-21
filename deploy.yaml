@@ -39,9 +39,6 @@ services:
       # ── Optional: Web UI authentication ────────────────
       # - "AUTH_LOGIN=admin"
       # - "AUTH_PASSWORD=changeme"
-      # ── Optional: SSH access credentials ───────────────
-      # - "SSH_USER=root"
-      # - "SSH_PASSWORD=your-ssh-password"
     params:
       storage:
         data:
@@ -66,13 +63,6 @@ services:
             - "502"                # Bad Gateway — proxy/ingress transient failure
             - "503"                # Service Unavailable
             - "504"                # Gateway Timeout — common on Akash ingress
-      # ── SSH — direct access for debugging ─────────────
-      # NOTE: Set SSH_USER/SSH_PASSWORD env vars above to secure access
-      - port: 22
-        as: 22
-        proto: tcp
-        to:
-          - global: true
 
 profiles:
   compute:
