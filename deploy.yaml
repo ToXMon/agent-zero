@@ -15,8 +15,8 @@
 # ║    4. Deploy via https://console.akash.network                             ║
 # ║                                                                            ║
 # ║  Image tags available (from GitHub Actions):                               ║
-# ║    • SHA:       ghcr.io/toxmon/agent-zero-akash:6392a11                   ║
-# ║    • Semver:    ghcr.io/toxmon/agent-zero-akash:6392a11                     ║
+# ║    • SHA:       ghcr.io/toxmon/agent-zero-akash:9892e4c                   ║
+# ║    • Semver:    ghcr.io/toxmon/agent-zero-akash:9892e4c                     ║
 # ║    • Major.Min: ghcr.io/toxmon/agent-zero-akash:v0.1      (after tagging)                       ║
 # ║    ⚠  NEVER use :latest — Akash requires explicit tags for                ║
 # ║       reproducible deployments and will reject :latest                     ║
@@ -28,7 +28,7 @@ version: "2.0"
 services:
   agent-zero:
     # ⚠ MUST be an explicit tag — :latest is rejected by Akash
-    image: ghcr.io/toxmon/agent-zero-akash:6392a11
+    image: ghcr.io/toxmon/agent-zero-akash:9892e4c
     env:
       # ── Required ──────────────────────────────────────
       - "WEB_UI_HOST=0.0.0.0"
