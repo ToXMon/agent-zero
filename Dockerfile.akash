@@ -22,7 +22,7 @@ RUN apt-get update && \
 # ─── Layer 2: nginx WebSocket proxy config ────────────────────────────────────
 COPY scripts/nginx-ws-proxy.conf /etc/nginx/sites-available/agent-zero
 RUN mkdir -p /etc/nginx/sites-enabled && \
-    ln -sf /etc/nginx/sites-available/agent-zero /etc/nginx/sites-enabled/agent-zero && \
+    ln -sf /etc/nginx/sites-available/agent-zero /etc/nginx/sites-enabled/agent-zero.conf && \
     if ! grep -q "include /etc/nginx/sites-enabled" /etc/nginx/nginx.conf 2>/dev/null; then \
         sed -i '/http {/a\    include /etc/nginx/sites-enabled/*.conf;' /etc/nginx/nginx.conf 2>/dev/null || true; \
     fi && \
