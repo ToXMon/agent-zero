@@ -1,17 +1,25 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  Agent Zero — Akash SDL (Optimized for Reliability)                        ║
+# ║  Agent Zero — Akash SDL (Production-Grade)                                 ║
 # ║                                                                            ║
 # ║  Features:                                                                 ║
 # ║    • Persistent NVMe storage — /a0 data survives container restarts        ║
 # ║    • Shared memory (SHM) — prevents OOM during npm install, Chrome, etc.   ║
-# ║    • WebSocket-patched build with nginx reverse proxy                      ║
-# ║    • SSH access for debugging                                              ║
+# ║    • WebSocket-patched build with nginx reverse proxy (24h WS timeout)     ║
+# ║    • HTTP retry logic on 502/504 for resilient WebSocket upgrades          ║
+# ║    • SSH access for debugging (secure with keys or auth env vars)          ║
 # ║                                                                            ║
-# ║  Before deploying:                                                         ║
-# ║    1. docker build -t <your-registry>/agent-zero-akash:v1.0.0 .            ║
-# ║    2. docker push <your-registry>/agent-zero-akash:v1.0.0                  ║
-# ║    3. Update the `image` field below                                       ║
-# ║    4. Set your API keys in the `env` section                               ║
+# ║  Deploy steps:                                                             ║
+# ║    1. Push to main or tag a release → GitHub Actions builds image          ║
+# ║    2. Update the `image` tag below to the built SHA or version             ║
+# ║    3. Set your API keys in the `env` section                               ║
+# ║    4. Deploy via https://console.akash.network                             ║
+# ║                                                                            ║
+# ║  Image tags available (from GitHub Actions):                               ║
+# ║    • SHA:       ghcr.io/toxmon/agent-zero-akash:6392a11                   ║
+# ║    • Semver:    ghcr.io/toxmon/agent-zero-akash:6392a11                     ║
+# ║    • Major.Min: ghcr.io/toxmon/agent-zero-akash:v0.1      (after tagging)                       ║
+# ║    ⚠  NEVER use :latest — Akash requires explicit tags for                ║
+# ║       reproducible deployments and will reject :latest                     ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
 ---
@@ -19,7 +27,8 @@ version: "2.0"
 
 services:
   agent-zero:
-    image: ghcr.io/toxmon/agent-zero-akash:latest  # Auto-built from GitHub Actions on push to main
+    # ⚠ MUST be an explicit tag — :latest is rejected by Akash
+    image: ghcr.io/toxmon/agent-zero-akash:6392a11
     env:
       # ── Required ──────────────────────────────────────
       - "WEB_UI_HOST=0.0.0.0"
@@ -27,24 +36,38 @@ services:
       # - "OPENAI_API_KEY=sk-..."
       # - "ANTHROPIC_API_KEY=sk-ant-..."
       # - "GOOGLE_API_KEY=AIza..."
-      # ── Optional auth ─────────────────────────────────
+      # ── Optional: Web UI authentication ────────────────
       # - "AUTH_LOGIN=admin"
       # - "AUTH_PASSWORD=changeme"
+      # ── Optional: SSH access credentials ───────────────
+      # - "SSH_USER=root"
+      # - "SSH_PASSWORD=your-ssh-password"
     params:
       storage:
         data:
-          mount: /a0                # Persistent volume → Agent Zero working directory
+          mount: /a0                # Persistent NVMe → Agent Zero working directory
         shm:
-          mount: /dev/shm           # RAM-backed shared memory
+          mount: /dev/shm           # RAM-backed shared memory for IPC/Chrome
     expose:
-      # HTTP/HTTPS — nginx reverse proxy (handles WebSocket upgrades)
+      # ── HTTP/HTTPS — nginx reverse proxy ──────────────
       - port: 80
         as: 80
         to:
           - global: true
         http_options:
-          max_body_size: 104857600  # 100MB — file uploads, backups
-      # SSH — direct access for debugging
+          max_body_size: 104857600  # 100MB max (Akash upper limit) — uploads, backups
+          read_timeout: 60000      # 60s (max) — don't cut WebSocket upgrades short
+          send_timeout: 60000      # 60s (max) — same rationale
+          next_tries: 3            # Retry transient gateway errors on initial connect
+          next_timeout: 5000       # 5s between retries
+          next_cases:              # All values MUST be quoted strings
+            - error
+            - timeout
+            - "502"                # Bad Gateway — proxy/ingress transient failure
+            - "503"                # Service Unavailable
+            - "504"                # Gateway Timeout — common on Akash ingress
+      # ── SSH — direct access for debugging ─────────────
+      # NOTE: Set SSH_USER/SSH_PASSWORD env vars above to secure access
       - port: 22
         as: 22
         proto: tcp
@@ -56,7 +79,7 @@ profiles:
     agent-zero:
       resources:
         cpu:
-          units: 4                  # 4 cores — npm install parallelism, SearXNG, A0 concurrency
+          units: 4                  # 4 cores — npm parallelism, SearXNG, A0 concurrency
         memory:
           size: 8Gi                 # 8GB RAM — prevents OOM during heavy operations
         storage:
@@ -67,27 +90,32 @@ profiles:
             size: 20Gi
             attributes:
               persistent: true
-              class: beta3            # NVMe — fastest I/O for npm/pip package caches, code
+              class: beta3            # NVMe — fastest I/O for npm/pip caches, code
           # Volume 3: Shared memory (RAM-backed /dev/shm)
           - name: shm
             size: 2Gi
             attributes:
-              persistent: false       # RAM class CANNOT be persistent
-              class: ram              # RAM-backed /dev/shm for fast IPC
+              class: ram              # RAM class — CANNOT be persistent (Akash rule)
 
   placement:
     akash:
       attributes:
         host: akash
-      # ── Optional: require audited providers ──────────
+        # Only receive bids from providers that support beta3 (NVMe) storage
+        capabilities/storage/2/class: beta3
+      # ── Recommended: require audited providers ─────────
+      # Uncomment to only accept bids from Akash-audited providers:
       # signedBy:
       #   anyOf:
-      #     - "akash1365yvmc4s7awdyj3n2sav7xfx76adc6dnmlx63"  # Akash official auditor
+      #     - "akash1365yvmc4s7awdyj3n2sav7xfx76adc6dnmlx63"
+      #     - "akash18qa2a2ltfyvkyj0ggj3hkvuj6twzyumuaru9s4"
       pricing:
         agent-zero:
           denom: uakt
-          amount: 5000              # Adjust based on current market rates
-          # For stable USDC pricing, use:
+          # 5000 uakt/block ≈ 2,190 AKT/month
+          # Adjust based on current market — higher = more provider acceptance
+          amount: 5000
+          # For stable USDC pricing, uncomment:
           # denom: ibc/170C677610AC31DF0904FFE09CD3B5C657492170E7E52372E48756B71E56F2F1
           # amount: 100
 
