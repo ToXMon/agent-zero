@@ -72,8 +72,8 @@ socketio_server = socketio.AsyncServer(
     cors_allowed_origins=lambda _origin, environ: validate_ws_origin(environ)[0],
     logger=False,
     engineio_logger=False,
-    ping_interval=25,  # explicit default to avoid future lib changes
-    ping_timeout=20,   # explicit default to avoid future lib changes
+    ping_interval=15,   # Send pings every 15s (was 25) — keeps connection alive through proxies
+    ping_timeout=120,   # Allow 120s for pong (was 20) — tolerates event loop blocking during heavy tasks
     max_http_buffer_size=50 * 1024 * 1024,
 )
 
@@ -505,6 +505,10 @@ def run():
         log_level="info",
         access_log=_settings.get("uvicorn_access_logs_enabled", False),
         ws="wsproto",
+        # Akash proxy fix: set transport-level WebSocket ping/pong to prevent
+        # idle timeouts from killing the connection during long operations
+        ws_ping_interval=20,    # uvicorn transport ping every 20s
+        ws_ping_timeout=120,    # allow 120s for pong response
     )
     server = uvicorn.Server(config)
 

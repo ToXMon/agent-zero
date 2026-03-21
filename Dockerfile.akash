@@ -1,0 +1,71 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Agent Zero — Akash-Patched Build (Optimized)                              ║
+# ║                                                                            ║
+# ║  Fixes WebSocket disconnections during heavy operations (web search,       ║
+# ║  npm install, etc.) and optimizes for Akash persistent storage.            ║
+# ║                                                                            ║
+# ║  Build:   docker build -t agent-zero-akash:v1.0.0 .                        ║
+# ║  Test:    docker run -p 50080:80 --shm-size=2g agent-zero-akash:v1.0.0     ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# Pin to a specific upstream version for reproducible builds.
+# Check https://hub.docker.com/r/agent0ai/agent-zero/tags for available tags.
+# To update: change this tag and rebuild with --no-cache
+FROM agent0ai/agent-zero:v0.9.8.2
+
+USER root
+
+# ─── Layer 1: System dependencies (cached unless base image changes) ──────────
+# nginx: WebSocket reverse proxy with extended timeouts
+# curl: healthcheck endpoint probing
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        nginx \
+        curl && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    # Pre-create persistent storage mount point so it exists even
+    # before Akash mounts the volume (prevents first-run race conditions)
+    mkdir -p /a0 && \
+    # Clean up default nginx site to avoid conflicts
+    rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+# ─── Layer 2: nginx configuration (cached unless proxy config changes) ────────
+COPY scripts/nginx-ws-proxy.conf /etc/nginx/sites-available/agent-zero
+RUN mkdir -p /etc/nginx/sites-enabled && \
+    ln -sf /etc/nginx/sites-available/agent-zero /etc/nginx/sites-enabled/agent-zero && \
+    # Ensure nginx.conf includes sites-enabled (some base images skip this)
+    if ! grep -q "include /etc/nginx/sites-enabled" /etc/nginx/nginx.conf 2>/dev/null; then \
+        sed -i '/http {/a\    include /etc/nginx/sites-enabled/*.conf;' /etc/nginx/nginx.conf 2>/dev/null || true; \
+    fi && \
+    # Validate nginx config at build time — fail fast on syntax errors
+    nginx -t
+
+# ─── Layer 3: Supervisord + startup scripts (cached unless scripts change) ────
+COPY scripts/supervisord-akash.conf /etc/supervisor/conf.d/supervisord.conf
+COPY scripts/run_A0_akash.sh /exe/run_A0.sh
+COPY scripts/healthcheck.sh /exe/healthcheck.sh
+RUN chmod +x /exe/run_A0.sh /exe/healthcheck.sh
+
+# ─── Layer 4: Patch scripts (rebuild only when patches change) ────────────────
+COPY scripts/apply_patches.sh /akash-patches/apply_patches.sh
+COPY patches/ /akash-patches/patches/
+RUN chmod +x /akash-patches/apply_patches.sh && \
+    # Apply patches to the A0 source tree
+    bash /akash-patches/apply_patches.sh /a0 && \
+    # Verify critical patches applied
+    echo "Verifying patches..." && \
+    grep -q "ping_interval=15" /a0/run_ui.py && \
+    grep -q "first_output_timeout.*120" /a0/python/tools/code_execution_tool.py && \
+    grep -q "SEARCH_TIMEOUT" /a0/python/helpers/searxng.py && \
+    echo "All patches verified."
+
+# ─── Healthcheck ──────────────────────────────────────────────────────────────
+# Akash providers use HEALTHCHECK to determine container readiness
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD /exe/healthcheck.sh
+
+# ─── Ports ────────────────────────────────────────────────────────────────────
+# 22: SSH, 80: nginx→A0, 5000: A0 direct (internal), 55510: SearXNG (internal)
+EXPOSE 22 80
+
+# Entrypoint inherited from base image (supervisord via /exe/initialize.sh)

@@ -13,18 +13,21 @@ from python.helpers.messages import truncate_text as truncate_text_agent
 import re
 
 # Timeouts for python, nodejs, and terminal runtimes.
+# PATCHED: Increased for Akash/cloud deployments where npm install, pip install,
+# and other heavy operations need more time before producing output.
 CODE_EXEC_TIMEOUTS: dict[str, int] = {
-    "first_output_timeout": 30,
-    "between_output_timeout": 15,
-    "max_exec_timeout": 180,
+    "first_output_timeout": 120,    # was 30 — npm/pip resolution can take >30s
+    "between_output_timeout": 60,   # was 15 — large installs pause between chunks
+    "max_exec_timeout": 600,        # was 180 — full npm install can take 10min
     "dialog_timeout": 5,
 }
 
 # Timeouts for output runtime.
+# PATCHED: Increased proportionally for long-running output monitoring.
 OUTPUT_TIMEOUTS: dict[str, int] = {
-    "first_output_timeout": 90,
-    "between_output_timeout": 45,
-    "max_exec_timeout": 300,
+    "first_output_timeout": 180,    # was 90
+    "between_output_timeout": 120,  # was 45
+    "max_exec_timeout": 900,        # was 300 — 15 min for long output monitoring
     "dialog_timeout": 5,
 }
 
@@ -237,10 +240,10 @@ class CodeExecution(Tool):
         self,
         session=0,
         reset_full_output=True,
-        first_output_timeout=30,  # Wait up to x seconds for first output
-        between_output_timeout=15,  # Wait up to x seconds between outputs
+        first_output_timeout=120,  # Wait up to x seconds for first output
+        between_output_timeout=60,  # Wait up to x seconds between outputs
         dialog_timeout=5,  # potential dialog detection timeout
-        max_exec_timeout=180,  # hard cap on total runtime
+        max_exec_timeout=600,  # hard cap on total runtime
         sleep_time=0.1,
         prefix="",
         timeouts: dict | None = None,

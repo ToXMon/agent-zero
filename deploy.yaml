@@ -1,0 +1,98 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Agent Zero — Akash SDL (Optimized for Reliability)                        ║
+# ║                                                                            ║
+# ║  Features:                                                                 ║
+# ║    • Persistent NVMe storage — /a0 data survives container restarts        ║
+# ║    • Shared memory (SHM) — prevents OOM during npm install, Chrome, etc.   ║
+# ║    • WebSocket-patched build with nginx reverse proxy                      ║
+# ║    • SSH access for debugging                                              ║
+# ║                                                                            ║
+# ║  Before deploying:                                                         ║
+# ║    1. docker build -t <your-registry>/agent-zero-akash:v1.0.0 .            ║
+# ║    2. docker push <your-registry>/agent-zero-akash:v1.0.0                  ║
+# ║    3. Update the `image` field below                                       ║
+# ║    4. Set your API keys in the `env` section                               ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+---
+version: "2.0"
+
+services:
+  agent-zero:
+    image: ghcr.io/toxmon/agent-zero-akash:latest  # ← CHANGE THIS (always pin a version tag)
+    env:
+      # ── Required ──────────────────────────────────────
+      - "WEB_UI_HOST=0.0.0.0"
+      # Uncomment and set at least one LLM provider key:
+      # - "OPENAI_API_KEY=sk-..."
+      # - "ANTHROPIC_API_KEY=sk-ant-..."
+      # - "GOOGLE_API_KEY=AIza..."
+      # ── Optional auth ─────────────────────────────────
+      # - "AUTH_LOGIN=admin"
+      # - "AUTH_PASSWORD=changeme"
+    params:
+      storage:
+        data:
+          mount: /a0                # Persistent volume → Agent Zero working directory
+        shm:
+          mount: /dev/shm           # RAM-backed shared memory
+    expose:
+      # HTTP/HTTPS — nginx reverse proxy (handles WebSocket upgrades)
+      - port: 80
+        as: 80
+        to:
+          - global: true
+        http_options:
+          max_body_size: 104857600  # 100MB — file uploads, backups
+      # SSH — direct access for debugging
+      - port: 22
+        as: 22
+        proto: tcp
+        to:
+          - global: true
+
+profiles:
+  compute:
+    agent-zero:
+      resources:
+        cpu:
+          units: 4                  # 4 cores — npm install parallelism, SearXNG, A0 concurrency
+        memory:
+          size: 8Gi                 # 8GB RAM — prevents OOM during heavy operations
+        storage:
+          # Volume 1: Ephemeral root (mandatory) — OS, temp files, logs
+          - size: 10Gi
+          # Volume 2: Persistent NVMe — Agent Zero data survives restarts
+          - name: data
+            size: 20Gi
+            attributes:
+              persistent: true
+              class: beta3            # NVMe — fastest I/O for npm/pip package caches, code
+          # Volume 3: Shared memory (RAM-backed /dev/shm)
+          - name: shm
+            size: 2Gi
+            attributes:
+              persistent: false       # RAM class CANNOT be persistent
+              class: ram              # RAM-backed /dev/shm for fast IPC
+
+  placement:
+    akash:
+      attributes:
+        host: akash
+      # ── Optional: require audited providers ──────────
+      # signedBy:
+      #   anyOf:
+      #     - "akash1365yvmc4s7awdyj3n2sav7xfx76adc6dnmlx63"  # Akash official auditor
+      pricing:
+        agent-zero:
+          denom: uakt
+          amount: 5000              # Adjust based on current market rates
+          # For stable USDC pricing, use:
+          # denom: ibc/170C677610AC31DF0904FFE09CD3B5C657492170E7E52372E48756B71E56F2F1
+          # amount: 100
+
+deployment:
+  agent-zero:
+    akash:
+      profile: agent-zero
+      count: 1
